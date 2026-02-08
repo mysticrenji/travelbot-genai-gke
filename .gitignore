@@ -1,0 +1,29 @@
+.env
+.env.*
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Test / lint caches
+.pytest_cache/
+.mypy_cache/
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+
+# Local overrides
+.env.local
+
+# Claude local instruction file
+CLAUDE.md
+*.claude

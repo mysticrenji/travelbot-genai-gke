@@ -1,0 +1,165 @@
+# --- PART 1: IDENTITY & PERMISSIONS (Config Connector) ---
+# Creates a Google Service Account (GSA) and grants it the necessary permissions
+
+# 1. Google Service Account for the bot
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMServiceAccount
+metadata:
+  name: adk-bot-sa
+  namespace: genai-bot
+  annotations:
+    cnrm.cloud.google.com/project-id: "YOUR_PROJECT_ID"
+spec:
+  displayName: "ADK Bot Service Account"
+---
+# 2. Grant Vertex AI User role to the GSA
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: adk-bot-vertex-access
+  namespace: genai-bot
+spec:
+  member: "serviceAccount:adk-bot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+  role: "roles/aiplatform.user"
+  resourceRef:
+    kind: Project
+    external: "projects/YOUR_PROJECT_ID"
+---
+# 3. Grant Artifact Registry Reader to the Compute Engine default SA (GKE Autopilot node SA)
+#    GKE Autopilot nodes use this SA to pull images from Artifact Registry (gcr.io)
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: gke-node-ar-access
+  namespace: genai-bot
+spec:
+  member: "serviceAccount:YOUR_PROJECT_ID-compute@developer.gserviceaccount.com"
+  role: "roles/artifactregistry.reader"
+  resourceRef:
+    kind: Project
+    external: "projects/YOUR_PROJECT_ID"
+---
+# 4. Grant Artifact Registry Reader to the bot SA as well (for Workload Identity image pulling)
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: adk-bot-ar-access
+  namespace: genai-bot
+spec:
+  member: "serviceAccount:adk-bot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+  role: "roles/artifactregistry.reader"
+  resourceRef:
+    kind: Project
+    external: "projects/YOUR_PROJECT_ID"
+---
+# 5. Workload Identity binding - allows K8s SA to impersonate Google SA
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: adk-bot-binding
+  namespace: genai-bot
+spec:
+  member: "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[genai-bot/adk-ksa]"
+  role: "roles/iam.workloadIdentityUser"
+  resourceRef:
+    apiVersion: iam.cnrm.cloud.google.com/v1beta1
+    kind: IAMServiceAccount
+    name: adk-bot-sa
+
+# --- PART 2: KUBERNETES SERVICE ACCOUNT ---
+---
+# 6. Kubernetes Service Account (KSA) linked to the Google SA via Workload Identity
+#    On GKE, image pulling is handled by the node's service account automatically.
+#    No imagePullSecrets needed - the GKE node pool SA has storage access by default.
+#    The Workload Identity annotation links this KSA to the Google SA for API calls (Vertex AI).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: adk-ksa
+  namespace: genai-bot
+  annotations:
+    iam.gke.io/gcp-service-account: "adk-bot-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+
+# --- PART 3: BACKEND (FastAPI) ---
+---
+# 7. Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-backend
+  namespace: genai-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adk-backend
+  template:
+    metadata:
+      labels:
+        app: adk-backend
+    spec:
+      serviceAccountName: adk-ksa
+      containers:
+      - name: api
+        image: gcr.io/YOUR_PROJECT_ID/adk-bot:v2
+        ports:
+        - containerPort: 8080
+---
+# 8. Backend Service (ClusterIP - internal only)
+# Makes the backend available at "http://adk-backend" inside the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-backend
+  namespace: genai-bot
+spec:
+  selector:
+    app: adk-backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+
+# --- PART 4: FRONTEND (Streamlit) ---
+---
+# 9. Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-frontend
+  namespace: genai-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adk-frontend
+  template:
+    metadata:
+      labels:
+        app: adk-frontend
+    spec:
+      serviceAccountName: adk-ksa
+      containers:
+      - name: ui
+        image: gcr.io/YOUR_PROJECT_ID/adk-frontend:v2
+        ports:
+        - containerPort: 8501
+        env:
+        - name: BACKEND_URL
+          value: "http://adk-backend"
+---
+# 10. Frontend Service (LoadBalancer - external access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-frontend-service
+  namespace: genai-bot
+spec:
+  selector:
+    app: adk-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8501
+  type: ClusterIP

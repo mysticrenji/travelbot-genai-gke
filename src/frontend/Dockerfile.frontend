@@ -1,0 +1,23 @@
+# Frontend Dockerfile for GenAI Travel Bot
+# Uses Python 3.10 slim image for smaller footprint
+
+FROM python:3.10-slim
+
+# Set working directory inside the container
+WORKDIR /app
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the Streamlit application code
+COPY frontend.py .
+
+# Expose port 8501 (Streamlit's default port)
+EXPOSE 8501
+
+# Run the Streamlit application
+# --server.port=8501: Explicitly set port (matches EXPOSE)
+# --server.address=0.0.0.0: Listen on all network interfaces (required for container networking)
+# --server.headless=true: Skip the welcome email prompt (required for non-interactive environments)
+CMD ["streamlit", "run", "frontend.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
