@@ -11,7 +11,7 @@ A lightweight AI-powered travel assistant built with Google ADK, Vertex AI (Gemi
 - Secure authentication using Workload Identity
 - Containerized with Docker
 
-A complete walkthrough is availiable on [Medium](https://renjithvr11.medium.com/building-a-simple-travel-assistant-with-google-adk-and-gemini-on-gke-38d58a5a42fc)
+A complete walkthrough is available on [Medium](https://renjithvr11.medium.com/building-a-simple-travel-assistant-with-google-adk-and-gemini-on-gke-38d58a5a42fc)
 
 ## Architecture
 
